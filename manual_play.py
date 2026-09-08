@@ -16,9 +16,13 @@ if current_dir not in sys.path:
 from arena_env.arena_gym_env import ArenaGymEnv
 from arena_env import config
 from in_game_menu import InGameMenu
+from audio_manager import get_audio_manager
 
 
 def run_manual_play(style=1, return_to_menu=False):
+    audio = get_audio_manager()
+    audio.play_music()
+
     print("==================================================")
     print("        ARENA MANUAL PLAY CONTROLS               ")
     print("==================================================")

@@ -42,7 +42,6 @@ class MenuParticle:
 
 class BannerButton:
     """
-    Ornamental Game Button styled after classic RPG / Action game plaques:
     Rectangular central banner with sharp diamond / arrow endcap wings.
     """
 
@@ -162,3 +161,121 @@ class BannerButton:
         if self.tag and tag_font:
             tag_surf = tag_font.render(self.tag, True, (0, 255, 204) if self.is_hovered else (255, 215, 0))
             surface.blit(tag_surf, (rx + wing_len + 14, self.cy - tag_surf.get_height() // 2))
+
+
+class VolumeSlider:
+    """
+    Volume Slider with draggable thumb
+    """
+
+    def __init__(self, center_x, center_y, width, height, label, initial_val=0.8, on_change=None):
+        self.cx = center_x
+        self.cy = center_y
+        self.w = width
+        self.h = height
+        self.label = label
+        self.value = max(0.0, min(1.0, float(initial_val)))
+        self.on_change = on_change
+
+        self.is_dragging = False
+        self.is_hovered = False
+
+        btn_size = 24
+        pad = 8
+        self.track_w = width - (btn_size * 2 + pad * 2)
+        self.track_h = 10
+
+        # Position elements relative to (center_x, center_y)
+        total_w = width
+        start_x = center_x - total_w // 2
+
+        self.btn_minus = pygame.Rect(start_x, center_y + 4, btn_size, btn_size)
+        self.track_rect = pygame.Rect(start_x + btn_size + pad, center_y + 4 + (btn_size - self.track_h) // 2, self.track_w, self.track_h)
+        self.btn_plus = pygame.Rect(self.track_rect.right + pad, center_y + 4, btn_size, btn_size)
+
+        self.thumb_radius = 8
+
+    def set_value(self, new_val):
+        new_val = max(0.0, min(1.0, float(new_val)))
+        if abs(new_val - self.value) > 0.001:
+            self.value = new_val
+            if self.on_change:
+                self.on_change(self.value)
+
+    def handle_event(self, event, mouse_pos):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.btn_minus.collidepoint(mouse_pos):
+                self.set_value(round(self.value - 0.05, 2))
+                return True
+            elif self.btn_plus.collidepoint(mouse_pos):
+                self.set_value(round(self.value + 0.05, 2))
+                return True
+            elif self.track_rect.inflate(10, 16).collidepoint(mouse_pos):
+                self.is_dragging = True
+                val = (mouse_pos[0] - self.track_rect.x) / self.track_rect.width
+                self.set_value(val)
+                return True
+
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.is_dragging:
+                self.is_dragging = False
+                return True
+
+        elif event.type == pygame.MOUSEMOTION:
+            if self.is_dragging:
+                val = (mouse_pos[0] - self.track_rect.x) / self.track_rect.width
+                self.set_value(val)
+                return True
+
+        return False
+
+    def update(self, mouse_pos, dt=0.016):
+        self.is_hovered = self.track_rect.inflate(16, 20).collidepoint(mouse_pos)
+
+    def draw(self, surface, label_font, val_font):
+        # 1. Label and Percentage text
+        lbl_surf = label_font.render(self.label, True, (0, 255, 204))
+        surface.blit(lbl_surf, (self.btn_minus.x, self.cy - 20))
+
+        pct_str = f"{int(round(self.value * 100))}%"
+        val_surf = val_font.render(pct_str, True, (255, 215, 0))
+        surface.blit(val_surf, (self.btn_plus.right - val_surf.get_width(), self.cy - 20))
+
+        # 2. Minus [-] Button
+        mouse_pos = pygame.mouse.get_pos()
+        m_hov = self.btn_minus.collidepoint(mouse_pos)
+        pygame.draw.rect(surface, (35, 50, 75) if m_hov else (20, 28, 42), self.btn_minus, border_radius=4)
+        pygame.draw.rect(surface, (0, 255, 204) if m_hov else (60, 90, 130), self.btn_minus, width=1, border_radius=4)
+        m_txt = val_font.render("-", True, (255, 255, 255) if m_hov else (180, 205, 230))
+        surface.blit(m_txt, (self.btn_minus.centerx - m_txt.get_width() // 2, self.btn_minus.centery - m_txt.get_height() // 2))
+
+        # 3. Plus [+] Button
+        p_hov = self.btn_plus.collidepoint(mouse_pos)
+        pygame.draw.rect(surface, (35, 50, 75) if p_hov else (20, 28, 42), self.btn_plus, border_radius=4)
+        pygame.draw.rect(surface, (0, 255, 204) if p_hov else (60, 90, 130), self.btn_plus, width=1, border_radius=4)
+        p_txt = val_font.render("+", True, (255, 255, 255) if p_hov else (180, 205, 230))
+        surface.blit(p_txt, (self.btn_plus.centerx - p_txt.get_width() // 2, self.btn_plus.centery - p_txt.get_height() // 2))
+
+        # 4. Slider Track (Background)
+        pygame.draw.rect(surface, (15, 20, 32), self.track_rect, border_radius=5)
+        pygame.draw.rect(surface, (50, 75, 110), self.track_rect, width=1, border_radius=5)
+
+        # 5. Filled Level Bar (Neon Cyan)
+        fill_w = int(self.track_rect.width * self.value)
+        if fill_w > 0:
+            fill_rect = pygame.Rect(self.track_rect.x, self.track_rect.y, fill_w, self.track_rect.height)
+            pygame.draw.rect(surface, (0, 230, 180), fill_rect, border_radius=5)
+            # Glass shine
+            shine_rect = pygame.Rect(self.track_rect.x, self.track_rect.y, fill_w, max(1, self.track_rect.height // 2))
+            shine_surf = pygame.Surface((fill_w, max(1, self.track_rect.height // 2)), pygame.SRCALPHA)
+            shine_surf.fill((255, 255, 255, 60))
+            surface.blit(shine_surf, shine_rect.topleft)
+
+        # 6. Thumb Knob (Gold diamond / glowing circle)
+        thumb_x = self.track_rect.x + fill_w
+        thumb_y = self.track_rect.centery
+        thumb_col = (255, 235, 120) if (self.is_dragging or self.is_hovered) else (220, 195, 80)
+        pygame.draw.circle(surface, thumb_col, (thumb_x, thumb_y), self.thumb_radius)
+        pygame.draw.circle(surface, (20, 30, 45), (thumb_x, thumb_y), self.thumb_radius, width=2)
+        pygame.draw.circle(surface, (255, 255, 255), (thumb_x, thumb_y), 3)
+

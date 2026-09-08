@@ -21,6 +21,7 @@ if current_dir not in sys.path:
 from arena_env.arena_gym_env import ArenaGymEnv
 from arena_env import config
 from in_game_menu import InGameMenu
+from audio_manager import get_audio_manager
 
 
 def evaluate(
@@ -33,6 +34,9 @@ def evaluate(
     fps=60,
     return_to_menu=False,
 ):
+    audio = get_audio_manager()
+    audio.play_music()
+
     if args is not None:
         model_path = getattr(args, "model", model_path)
         style = getattr(args, "style", style)
@@ -79,8 +83,9 @@ def evaluate(
     else:
         raise ValueError(f"Unsupported algorithm: {algo}")
 
-    # Create Environment
+    # Create Environment (render_mode=None so gym step() does not auto-flip; evaluate.py controls single-buffered rendering)
     env = ArenaGymEnv(control_style=style, render_mode=None)
+    env.game.audio = audio
     in_game_menu = InGameMenu(config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
 
     action_names = (
@@ -310,14 +315,13 @@ def evaluate(
             # Render scene
             env.game.render(flip=False)
 
-            # Custom Evaluation HUD Overlay
+            # Custom Evaluation HUD Overlay (Opaque solid banner to prevent visual artifacts)
             if env.game.screen is not None:
-                # Bottom Action HUD
-                bot_h = 32
-                bot_surf = pygame.Surface((config.SCREEN_WIDTH, bot_h), pygame.SRCALPHA)
-                bot_surf.fill((15, 20, 32, 220))
+                bot_h = 34
+                bot_surf = pygame.Surface((config.SCREEN_WIDTH, bot_h))
+                bot_surf.fill((12, 16, 26))
                 env.game.screen.blit(bot_surf, (0, config.SCREEN_HEIGHT - bot_h))
-                pygame.draw.line(env.game.screen, config.COLOR_BORDER, (0, config.SCREEN_HEIGHT - bot_h), (config.SCREEN_WIDTH, config.SCREEN_HEIGHT - bot_h), 2)
+                pygame.draw.line(env.game.screen, (0, 255, 204), (0, config.SCREEN_HEIGHT - bot_h), (config.SCREEN_WIDTH, config.SCREEN_HEIGHT - bot_h), 2)
 
                 act_label = action_names.get(last_action_idx, "UNKNOWN")
                 action_txt = env.game.font.render(f"Action: [{last_action_idx}] {act_label}", True, (0, 255, 204))
@@ -325,10 +329,11 @@ def evaluate(
                 step_txt = env.game.font.render(f"Step: {step_count}/{config.MAX_EPISODE_STEPS}", True, (180, 200, 230))
                 ep_txt = env.game.font.render(f"Ep: {ep}/{episodes} ({current_fps} FPS)", True, (220, 220, 240))
 
-                env.game.screen.blit(action_txt, (16, config.SCREEN_HEIGHT - bot_h + 8))
-                env.game.screen.blit(rew_txt, (260, config.SCREEN_HEIGHT - bot_h + 8))
-                env.game.screen.blit(step_txt, (450, config.SCREEN_HEIGHT - bot_h + 8))
-                env.game.screen.blit(ep_txt, (660, config.SCREEN_HEIGHT - bot_h + 8))
+                ty = config.SCREEN_HEIGHT - bot_h + (bot_h - action_txt.get_height()) // 2
+                env.game.screen.blit(action_txt, (16, ty))
+                env.game.screen.blit(rew_txt, (250, ty))
+                env.game.screen.blit(step_txt, (440, ty))
+                env.game.screen.blit(ep_txt, (640, ty))
 
                 pygame.display.flip()
 

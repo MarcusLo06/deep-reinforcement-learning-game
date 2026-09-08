@@ -18,7 +18,8 @@ if current_dir not in sys.path:
 from arena_env import config
 from manual_play import run_manual_play
 from evaluate import evaluate
-from ui_components import BannerButton, MenuParticle
+from ui_components import BannerButton, MenuParticle, VolumeSlider
+from audio_manager import get_audio_manager
 
 
 class UnifiedLauncher:
@@ -35,6 +36,10 @@ class UnifiedLauncher:
         pygame.display.set_caption("Assignment 3 Part 2 - Deep RL Arena Launcher")
         self.clock = pygame.time.Clock()
 
+        # Audio Manager & BGM start
+        self.audio = get_audio_manager()
+        self.audio.play_music()
+
         # Fonts
         self.title_font = pygame.font.SysFont("Trebuchet MS", 34, bold=True)
         self.subtitle_font = pygame.font.SysFont("Consolas", 13, bold=True)
@@ -48,7 +53,7 @@ class UnifiedLauncher:
         self.particles = [MenuParticle(self.width, self.height) for _ in range(40)]
         self.time_elapsed = 0.0
 
-        # Menus State: 'MAIN', 'PLAY_SELECT', 'AI_SELECT', 'GUIDE'
+        # Menus State: 'MAIN', 'PLAY_SELECT', 'AI_SELECT', 'SETTINGS', 'GUIDE'
         self.state = "MAIN"
 
         # Model Paths Check
@@ -60,35 +65,61 @@ class UnifiedLauncher:
     def _build_menus(self):
         cx = self.width // 2
         btn_w = 260
-        btn_h = 48
-        gap = 64
-        start_y = 230
+        btn_h = 44
+        gap = 56
+        start_y = 195
 
-        # MAIN MENU BUTTONS
+        # MAIN MENU BUTTONS (Play, AI Showcase, Settings, Guide, Exit) - Equal 56px Spacing
         self.main_buttons = [
             BannerButton(cx, start_y + 0 * gap, btn_w, btn_h, "PLAY"),
             BannerButton(cx, start_y + 1 * gap, btn_w, btn_h, "AI SHOWCASE"),
-            BannerButton(cx, start_y + 2 * gap, btn_w, btn_h, "GUIDE"),
-            BannerButton(cx, start_y + 3 * gap, btn_w, btn_h, "EXIT"),
+            BannerButton(cx, start_y + 2 * gap, btn_w, btn_h, "SETTINGS"),
+            BannerButton(cx, start_y + 3 * gap, btn_w, btn_h, "GUIDE"),
+            BannerButton(cx, start_y + 4 * gap, btn_w, btn_h, "EXIT"),
         ]
 
-        # PLAY SUBMENU (Style 1 vs Style 2)
+        # PLAY SUBMENU (Style 1 vs Style 2) - Equal 68px Spacing
         sub_w = 340
+        sub_y = 230
+        sub_gap = 68
         self.play_buttons = [
-            BannerButton(cx, start_y + 0 * gap, sub_w, btn_h, "STYLE 1: ROTATION & THRUST"),
-            BannerButton(cx, start_y + 1 * gap, sub_w, btn_h, "STYLE 2: DIRECT MOVEMENT"),
-            BannerButton(cx, start_y + 2.5 * gap, 200, 42, "BACK"),
+            BannerButton(cx, sub_y + 0 * sub_gap, sub_w, btn_h, "STYLE 1: ROTATION & THRUST"),
+            BannerButton(cx, sub_y + 1 * sub_gap, sub_w, btn_h, "STYLE 2: DIRECT MOVEMENT"),
+            BannerButton(cx, sub_y + 2 * sub_gap, 200, 42, "BACK"),
         ]
 
-        # AI SHOWCASE SUBMENU (Agent 1 vs Agent 2)
+        # AI SHOWCASE SUBMENU (Agent 1 vs Agent 2) - Equal 68px Spacing
         self.ai_buttons = [
-            BannerButton(cx, start_y + 0 * gap, sub_w, btn_h, "AGENT 1 (STYLE 1 POLICY)"),
-            BannerButton(cx, start_y + 1 * gap, sub_w, btn_h, "AGENT 2 (STYLE 2 POLICY)"),
-            BannerButton(cx, start_y + 2.5 * gap, 200, 42, "BACK"),
+            BannerButton(cx, sub_y + 0 * sub_gap, sub_w, btn_h, "AGENT 1 (STYLE 1 POLICY)"),
+            BannerButton(cx, sub_y + 1 * sub_gap, sub_w, btn_h, "AGENT 2 (STYLE 2 POLICY)"),
+            BannerButton(cx, sub_y + 2 * sub_gap, 200, 42, "BACK"),
         ]
 
-        # GUIDE SCREEN BACK BUTTON (Placed reliably at center bottom)
-        self.guide_back_btn = BannerButton(cx, 545, 190, 40, "◄ BACK")
+        # SETTINGS SCREEN SLIDERS & BACK BUTTON (Equal Spacing, Centered)
+        slider_w = 340
+        sl_y = 195
+        sl_gap = 64
+        self.settings_master_slider = VolumeSlider(
+            cx, sl_y + 0 * sl_gap, slider_w, 24, "MASTER VOLUME",
+            self.audio.master_volume, on_change=self.audio.set_master_volume
+        )
+        self.settings_music_slider = VolumeSlider(
+            cx, sl_y + 1 * sl_gap, slider_w, 24, "BGM MUSIC",
+            self.audio.music_volume, on_change=self.audio.set_music_volume
+        )
+        self.settings_sfx_slider = VolumeSlider(
+            cx, sl_y + 2 * sl_gap, slider_w, 24, "SFX EFFECTS",
+            self.audio.sfx_volume, on_change=self.audio.set_sfx_volume
+        )
+        self.settings_back_btn = BannerButton(cx, 395, 180, 40, "BACK")
+
+        # GUIDE SCREEN BACK BUTTON
+        self.guide_back_btn = BannerButton(cx, 545, 190, 40, "BACK")
+
+    def _sync_settings_sliders(self):
+        self.settings_master_slider.set_value(self.audio.master_volume)
+        self.settings_music_slider.set_value(self.audio.music_volume)
+        self.settings_sfx_slider.set_value(self.audio.sfx_volume)
 
     def _check_models(self):
         return os.path.exists(self.model_1_path), os.path.exists(self.model_2_path)
@@ -105,15 +136,27 @@ class UnifiedLauncher:
                 if event.type == pygame.QUIT:
                     running = False
 
-                elif event.type == pygame.KEYDOWN:
+                # Handle Volume Sliders when in SETTINGS state
+                if self.state == "SETTINGS":
+                    if self.settings_master_slider.handle_event(event, mouse_pos):
+                        continue
+                    if self.settings_music_slider.handle_event(event, mouse_pos):
+                        continue
+                    if self.settings_sfx_slider.handle_event(event, mouse_pos):
+                        continue
+
+                if event.type == pygame.KEYDOWN:
                     if self.state == "MAIN":
                         if event.key in (pygame.K_1, pygame.K_p):
                             self.state = "PLAY_SELECT"
                         elif event.key in (pygame.K_2, pygame.K_a):
                             self.state = "AI_SELECT"
-                        elif event.key in (pygame.K_3, pygame.K_g):
+                        elif event.key in (pygame.K_3, pygame.K_s):
+                            self._sync_settings_sliders()
+                            self.state = "SETTINGS"
+                        elif event.key in (pygame.K_4, pygame.K_g):
                             self.state = "GUIDE"
-                        elif event.key in (pygame.K_4, pygame.K_ESCAPE, pygame.K_q):
+                        elif event.key in (pygame.K_5, pygame.K_ESCAPE, pygame.K_q):
                             running = False
                     elif self.state == "PLAY_SELECT":
                         if event.key == pygame.K_1:
@@ -129,6 +172,9 @@ class UnifiedLauncher:
                             self._launch_eval(2)
                         elif event.key in (pygame.K_ESCAPE, pygame.K_b, pygame.K_BACKSPACE):
                             self.state = "MAIN"
+                    elif self.state == "SETTINGS":
+                        if event.key in (pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_RETURN, pygame.K_b, pygame.K_BACKSPACE):
+                            self.state = "MAIN"
                     elif self.state == "GUIDE":
                         if event.key in (pygame.K_ESCAPE, pygame.K_SPACE, pygame.K_RETURN, pygame.K_b, pygame.K_BACKSPACE):
                             self.state = "MAIN"
@@ -142,8 +188,11 @@ class UnifiedLauncher:
                                 elif i == 1:
                                     self.state = "AI_SELECT"
                                 elif i == 2:
-                                    self.state = "GUIDE"
+                                    self._sync_settings_sliders()
+                                    self.state = "SETTINGS"
                                 elif i == 3:
+                                    self.state = "GUIDE"
+                                elif i == 4:
                                     running = False
                     elif self.state == "PLAY_SELECT":
                         if self.play_buttons[0].is_hovered:
@@ -158,6 +207,9 @@ class UnifiedLauncher:
                         elif self.ai_buttons[1].is_hovered:
                             self._launch_eval(2)
                         elif self.ai_buttons[2].is_hovered:
+                            self.state = "MAIN"
+                    elif self.state == "SETTINGS":
+                        if self.settings_back_btn.is_hovered:
                             self.state = "MAIN"
                     elif self.state == "GUIDE":
                         if self.guide_back_btn.is_hovered:
@@ -176,6 +228,11 @@ class UnifiedLauncher:
             elif self.state == "AI_SELECT":
                 for btn in self.ai_buttons:
                     btn.update(mouse_pos, dt)
+            elif self.state == "SETTINGS":
+                self.settings_master_slider.update(mouse_pos, dt)
+                self.settings_music_slider.update(mouse_pos, dt)
+                self.settings_sfx_slider.update(mouse_pos, dt)
+                self.settings_back_btn.update(mouse_pos, dt)
             elif self.state == "GUIDE":
                 self.guide_back_btn.update(mouse_pos, dt)
 
@@ -203,7 +260,8 @@ class UnifiedLauncher:
                 for btn in current_buttons:
                     font_to_use = self.btn_font if len(btn.text) <= 15 else self.btn_sub_font
                     btn.draw(self.screen, font_to_use, self.tag_font)
-                self._draw_footer()
+            elif self.state == "SETTINGS":
+                self._draw_settings_screen()
             elif self.state == "GUIDE":
                 self._draw_guide_screen()
 
@@ -216,42 +274,51 @@ class UnifiedLauncher:
         sys.exit(0)
 
     def _draw_header(self):
-        header_h = 135
+        header_h = 75
         header_surf = pygame.Surface((self.width, header_h), pygame.SRCALPHA)
         header_surf.fill((12, 16, 26, 230))
         self.screen.blit(header_surf, (0, 0))
         pygame.draw.line(self.screen, config.COLOR_BORDER, (0, header_h), (self.width, header_h), 2)
 
-        # Pulsing Game Title
+        # Pulsing Game Title (Centered in Header)
         glow_val = int(210 + 45 * math.sin(self.time_elapsed * 2.8))
         title_col = (0, glow_val, int(glow_val * 0.85))
         t_surf = self.title_font.render("DEEP RL ACTION ARENA", True, title_col)
-        self.screen.blit(t_surf, ((self.width - t_surf.get_width()) // 2, 20))
-
-        sub_surf = self.subtitle_font.render(
-            "Assignment 3 • Part 2: Gymnasium & Stable-Baselines3", True, (180, 205, 235)
-        )
-        self.screen.blit(sub_surf, ((self.width - sub_surf.get_width()) // 2, 64))
-
-        # Model Status Badges
-        m1_ok, m2_ok = self._check_models()
-        s1_col = (0, 230, 120) if m1_ok else (255, 90, 90)
-        s2_col = (0, 230, 120) if m2_ok else (255, 90, 90)
-        st1_txt = self.tag_font.render(f"● Agent 1: {'Ready' if m1_ok else 'Missing'}", True, s1_col)
-        st2_txt = self.tag_font.render(f"● Agent 2: {'Ready' if m2_ok else 'Missing'}", True, s2_col)
-        self.screen.blit(st1_txt, (self.width // 2 - 170, 96))
-        self.screen.blit(st2_txt, (self.width // 2 + 50, 96))
+        self.screen.blit(t_surf, ((self.width - t_surf.get_width()) // 2, (header_h - t_surf.get_height()) // 2))
 
         if self.state == "PLAY_SELECT":
             lbl = self.btn_font.render("— SELECT CONTROL STYLE —", True, (255, 215, 0))
-            self.screen.blit(lbl, ((self.width - lbl.get_width()) // 2, 168))
+            self.screen.blit(lbl, ((self.width - lbl.get_width()) // 2, 150))
         elif self.state == "AI_SELECT":
             lbl = self.btn_font.render("— SELECT TRAINED AGENT —", True, (255, 215, 0))
-            self.screen.blit(lbl, ((self.width - lbl.get_width()) // 2, 168))
+            self.screen.blit(lbl, ((self.width - lbl.get_width()) // 2, 150))
 
-    def _draw_footer(self):
-        f_txt = self.tag_font.render("Click with Mouse or Press [1-4] • ESC to go Back / Exit", True, (110, 135, 165))
-        self.screen.blit(f_txt, ((self.width - f_txt.get_width()) // 2, self.height - 24))
+    def _draw_settings_screen(self):
+        modal_w = 520
+        modal_h = 390
+        mx = (self.width - modal_w) // 2
+        my = 100
+
+        modal_surf = pygame.Surface((modal_w, modal_h), pygame.SRCALPHA)
+        modal_surf.fill((14, 18, 30, 248))
+        self.screen.blit(modal_surf, (mx, my))
+        pygame.draw.rect(self.screen, (0, 255, 204), (mx, my, modal_w, modal_h), 2, border_radius=8)
+
+        t_surf = self.guide_header_font.render("AUDIO & VOLUME SETTINGS", True, (0, 255, 204))
+        self.screen.blit(t_surf, ((self.width - t_surf.get_width()) // 2, my + 16))
+        pygame.draw.line(self.screen, (40, 60, 90), (mx + 20, my + 50), (mx + modal_w - 20, my + 50), 1)
+
+        sub_txt = self.tag_font.render("Configure master audio levels and background music before playing", True, (160, 190, 220))
+        self.screen.blit(sub_txt, ((self.width - sub_txt.get_width()) // 2, my + 58))
+
+        # Sliders
+        self.settings_master_slider.draw(self.screen, self.guide_font, self.tag_font)
+        self.settings_music_slider.draw(self.screen, self.guide_font, self.tag_font)
+        self.settings_sfx_slider.draw(self.screen, self.guide_font, self.tag_font)
+
+        # Back Button (Centered)
+        self.settings_back_btn.draw(self.screen, self.btn_sub_font, self.tag_font)
+
 
     def _draw_guide_screen(self):
         modal_w = 720
@@ -325,6 +392,7 @@ class UnifiedLauncher:
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Assignment 3 Part 2 - Deep RL Arena Launcher")
         self.clock = pygame.time.Clock()
+        self.audio.play_music()
 
 
 def main():

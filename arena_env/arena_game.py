@@ -10,6 +10,15 @@ import pygame
 from pygame.math import Vector2
 from . import config
 
+try:
+    from audio_manager import get_audio_manager
+except ImportError:
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from audio_manager import get_audio_manager
+
+
 
 class Particle:
     """Visual particle for explosions, hits, and thruster exhaust."""
@@ -364,6 +373,7 @@ class ArenaGame:
         self.height = height
         self.control_style = control_style
         self.render_mode = render_mode
+        self.audio = get_audio_manager() if self.render_mode == "human" else None
 
         self.screen = None
         self.clock = None
@@ -462,6 +472,8 @@ class ArenaGame:
             nose = self.ship.pos + self.ship.heading_vector * (self.ship.radius + 2)
             self.bullets.append(Bullet(nose.x, nose.y, self.ship.heading_vector))
             self._create_explosion(nose.x, nose.y, config.COLOR_BULLET, count=4, speed=60.0)
+            if self.audio:
+                self.audio.play_sfx("shoot")
 
         # 2. Update Ship Physics
         wall_hit = self.ship.update(dt, self.width, self.height)
@@ -502,6 +514,8 @@ class ArenaGame:
                         self.enemies_killed += 1
                         self.score += 100
                         self._create_explosion(e.pos.x, e.pos.y, (255, 200, 50), count=20, speed=200.0)
+                        if self.audio:
+                            self.audio.play_sfx("enemy_explosion")
                     break
 
             if not b.is_alive:
@@ -521,6 +535,8 @@ class ArenaGame:
                         self.spawners_destroyed += 1
                         self.score += 500
                         self._create_explosion(s.pos.x, s.pos.y, (220, 100, 255), count=35, speed=250.0)
+                        if self.audio:
+                            self.audio.play_sfx("spawner_destroy")
                     break
 
         self.enemies = [e for e in self.enemies if e.is_alive]
@@ -539,6 +555,8 @@ class ArenaGame:
                 if damaged:
                     metrics["damage_taken"] += e.damage
                     self._create_explosion(self.ship.pos.x, self.ship.pos.y, config.COLOR_HEALTH_DAMAGE, count=14, speed=160.0)
+                    if self.audio:
+                        self.audio.play_sfx("player_hurt")
                     if not self.ship.is_alive:
                         metrics["player_died"] = True
                         self._create_explosion(self.ship.pos.x, self.ship.pos.y, (255, 50, 50), count=40, speed=280.0)
@@ -555,6 +573,8 @@ class ArenaGame:
             metrics["phase_advanced"] = True
             self.phase += 1
             self.score += 1000
+            if self.audio:
+                self.audio.play_sfx("phase_complete")
             for e in self.enemies:
                 self._create_explosion(e.pos.x, e.pos.y, config.COLOR_ENEMY, count=10, speed=120.0)
             self.enemies.clear()
@@ -586,6 +606,9 @@ class ArenaGame:
 
     def render(self, flip=True):
         """Visually renders the animated game scene to the Pygame screen."""
+        if self.audio is None:
+            self.audio = get_audio_manager()
+
         if self.screen is None:
             if not pygame.get_init():
                 pygame.init()
